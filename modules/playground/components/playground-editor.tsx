@@ -40,7 +40,13 @@ export const PlaygroundEditor = ({
   const isAcceptingSuggestionRef = useRef(false)
   const suggestionAcceptedRef = useRef(false)
   const suggestionTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  // tabCommandRef stores the command id returned by addCommand for debugging only;
+  // it is not an IDisposable (see handleEditorDidMount for why).
   const tabCommandRef = useRef<any>(null)
+  // These two DO return real IDisposable objects and must be disposed on unmount,
+  // otherwise every additional mount of the editor stacks a duplicate listener.
+  const cursorPositionListenerRef = useRef<{ dispose: () => void } | null>(null)
+  const modelContentListenerRef = useRef<{ dispose: () => void } | null>(null)
 
   // Generate unique ID for each suggestion
   const generateSuggestionId = () => `suggestion-${Date.now()}-${Math.random()}`
@@ -344,11 +350,12 @@ export const PlaygroundEditor = ({
       onTriggerSuggestion("completion", editor)
     })
 
-    // CRITICAL: Override Tab key with high priority and prevent default Monaco behavior
-    if (tabCommandRef.current) {
-      tabCommandRef.current.dispose()
-    }
-
+    // Override Tab key with high priority and prevent default Monaco behavior.
+    // NOTE: editor.addCommand() returns a command-id string (or null) — not an
+    // IDisposable — so there is nothing to dispose here. Commands registered via
+    // addCommand are torn down automatically when the editor instance itself is
+    // disposed (handled by @monaco-editor/react on unmount), so no manual
+    // cleanup is needed or possible for this ref.
     tabCommandRef.current = editor.addCommand(
       monaco.KeyCode.Tab,
       () => {
@@ -400,8 +407,14 @@ export const PlaygroundEditor = ({
       }
     })
 
-    // Listen for cursor position changes to hide suggestions when moving away
-    editor.onDidChangeCursorPosition((e: any) => {
+    // Listen for cursor position changes to hide suggestions when moving away.
+    // onDidChangeCursorPosition returns a real IDisposable — capture it so it can
+    // be disposed on unmount instead of leaking.
+    if (cursorPositionListenerRef.current) {
+      cursorPositionListenerRef.current.dispose()
+      cursorPositionListenerRef.current = null
+    }
+    cursorPositionListenerRef.current = editor.onDidChangeCursorPosition((e: any) => {
       if (isAcceptingSuggestionRef.current) return
 
       const newPosition = e.position
@@ -436,8 +449,13 @@ export const PlaygroundEditor = ({
       }
     })
 
-    // Listen for content changes to detect manual typing over suggestions
-    editor.onDidChangeModelContent((e: any) => {
+    // Listen for content changes to detect manual typing over suggestions.
+    // onDidChangeModelContent also returns a real IDisposable — same reasoning as above.
+    if (modelContentListenerRef.current) {
+      modelContentListenerRef.current.dispose()
+      modelContentListenerRef.current = null
+    }
+    modelContentListenerRef.current = editor.onDidChangeModelContent((e: any) => {
       if (isAcceptingSuggestionRef.current) return
 
       // If user types while there's a suggestion, clear it (unless it's our insertion)
@@ -512,9 +530,19 @@ export const PlaygroundEditor = ({
         inlineCompletionProviderRef.current.dispose()
         inlineCompletionProviderRef.current = null
       }
-      if (tabCommandRef.current) {
-        tabCommandRef.current.dispose()
-        tabCommandRef.current = null
+      // tabCommandRef intentionally NOT disposed here: it holds a command-id
+      // string from addCommand, not an IDisposable. Calling .dispose() on it
+      // threw "tabCommandRef.current.dispose is not a function" on every
+      // unmount. Monaco tears down addCommand registrations itself when the
+      // editor instance is disposed.
+      tabCommandRef.current = null
+      if (cursorPositionListenerRef.current) {
+        cursorPositionListenerRef.current.dispose()
+        cursorPositionListenerRef.current = null
+      }
+      if (modelContentListenerRef.current) {
+        modelContentListenerRef.current.dispose()
+        modelContentListenerRef.current = null
       }
     }
   }, [])

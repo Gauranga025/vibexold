@@ -62,8 +62,14 @@ export async function scanTemplateDirectory(
 ): Promise<TemplateFolder> {
   // Set default options
   const defaultOptions: ScanOptions = {
+    // package-lock.json is intentionally NOT ignored: excluding it forced every
+    // WebContainer session to run `npm install` with no lockfile, i.e. full
+    // dependency-tree resolution against the registry on every run instead of a
+    // fast, deterministic `npm ci`. yarn.lock is still ignored because every
+    // starter's install step is hardcoded to `npm install` (webcontainer-preview.tsx),
+    // so a yarn lockfile is never consumed here. npm-shrinkwrap.json was never in
+    // this list to begin with, so no change was needed for it.
     ignoreFiles: [
-      'package-lock.json',
       'yarn.lock',
       '.DS_Store',
       'thumbs.db',
