@@ -1,8 +1,8 @@
 # 🧠 Vibecode Editor – AI-Powered Web IDE
 
-![Vibecode Editor Thumbnail](public/vibe-code-editor-thumbnaail.svg)
+![Vibecode Editor Thumbnail](public/logo.svg)
 
-**Vibecode Editor** is a blazing-fast, AI-integrated web IDE built entirely in the browser using **Next.js App Router**, **WebContainers**, **Monaco Editor**, and **local LLMs via Ollama**. It offers real-time code execution, an AI-powered chat assistant, and support for multiple tech stacks — all wrapped in a stunning developer-first UI.
+**Vibecode Editor** is a blazing-fast, AI-integrated web IDE built entirely in the browser using **Next.js App Router**, **WebContainers**, **Monaco Editor**, and **Gimini**. It offers real-time code execution, an AI-powered chat assistant, and support for multiple tech stacks — all wrapped in a stunning developer-first UI.
 
 ---
 
@@ -30,7 +30,7 @@
 | Language      | TypeScript                                   |
 | Auth          | NextAuth (Google + GitHub OAuth)             |
 | Editor        | Monaco Editor                                |
-| AI Suggestion | Ollama (LLMs running locally via Docker)     |
+| AI Suggestion | Gemini API     |
 | Runtime       | WebContainers                                |
 | Terminal      | xterm.js                                     |
 | Database      | MongoDB (via DATABASE_URL)                   |
@@ -70,19 +70,11 @@ AUTH_GITHUB_ID=your_github_client_id
 AUTH_GITHUB_SECRET=your_github_secret
 DATABASE_URL=your_mongodb_connection_string
 NEXTAUTH_URL=http://localhost:3000
+GEMINI_API_KEY = "you_api_key"
 ```
 
-### 4. Start Local Ollama Model
 
-Make sure [Ollama](https://ollama.com/) and Docker are installed, then run:
-
-```bash
-ollama run codellama
-```
-
-Or use your preferred model that supports code generation.
-
-### 5. Run the Development Server
+### 4. Run the Development Server
 
 ```bash
 npm run dev
