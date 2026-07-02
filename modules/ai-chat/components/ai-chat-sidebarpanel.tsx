@@ -123,7 +123,7 @@ export const AIChatSidePanel: React.FC<AIChatSidePanelProps> = ({
     const [filterType, setFilterType] = useState<string>("all");
     const [autoSave, setAutoSave] = useState(true);
     const [streamResponse, setStreamResponse] = useState(true);
-    const [model, setModel] = useState<string>("gpt-6");
+    const [model] = useState<string>("gemini-2.5-flash");
 
     const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -386,15 +386,9 @@ export const AIChatSidePanel: React.FC<AIChatSidePanelProps> = ({
                                 <div className="flex items-center gap-2">
                                     <div className="hidden sm:flex items-center gap-2 text-xs text-zinc-400">
                                         <span className="text-zinc-500">Model:</span>
-                                        <select
-                                            value={model}
-                                            onChange={(e) => setModel(e.target.value)}
-                                            className="bg-zinc-900/60 border border-zinc-800 rounded px-2 py-1 text-zinc-200 focus:outline-none"
-                                        >
-                                            <option value="gpt-6">gpt-6</option>
-                                            <option value="codellama">codellama</option>
-                                            <option value="llama2">llama2</option>
-                                        </select>
+                                        <span className="bg-zinc-900/60 border border-zinc-800 rounded px-2 py-1 text-zinc-200">
+                                            gemini-2.5-flash
+                                        </span>
                                     </div>
                                     <div className="relative">
                                         <Search className="absolute left-2 top-1/2 transform -translate-y-1/2 h-3 w-3 text-zinc-500" />

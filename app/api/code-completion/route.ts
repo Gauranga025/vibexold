@@ -1,4 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server";
+import { GeminiProvider } from "@/lib/ai/providers";
 
 
 interface CodeSuggestionRequest {
@@ -139,26 +140,10 @@ Generate suggestion:`;
 
 async function generateSuggestion(prompt: string): Promise<string> {
   try {
-    const response = await fetch("http://localhost:11434/api/generate", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model: "codellama:latest",
-        prompt,
-        stream: false,
-        option: {
-          temperature: 0.7,
-          max_tokens: 300,
-        },
-      }),
-    });
-
-       if (!response.ok) {
-      throw new Error(`AI service error: ${response.statusText}`)
-    }
-
-      const data = await response.json()
-    let suggestion = data.response
+    const llmProvider = new GeminiProvider();
+    const systemPrompt = `You are a code completion assistant. Provide concise, accurate code suggestions based on the context. Output only the code to be inserted, no explanations.`;
+    
+    let suggestion = await llmProvider.generateResponse(prompt, systemPrompt);
 
      // Clean up the suggestion
     if (suggestion.includes("```")) {

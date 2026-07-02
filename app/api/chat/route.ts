@@ -1,6 +1,5 @@
-import { db } from "@/lib/db";
-import { error } from "console";
 import { NextRequest, NextResponse } from "next/server";
+import { GeminiProvider } from "@/lib/ai/providers";
 
 interface ChatMessage {
   role: "user" | "assistant";
@@ -10,59 +9,68 @@ interface ChatMessage {
 interface ChatRequest {
   message: string;
   history: ChatMessage[];
+  mode?: "chat" | "review" | "fix" | "optimize";
 }
 
-async function generateAIResponse(messages: ChatMessage[]): Promise<string> {
-  const systemPrompt = `You are a helpful AI coding assistant. You help developers with:
+async function generateAIResponse(messages: ChatMessage[], mode: string = "chat"): Promise<string> {
+  const systemPrompts: Record<string, string> = {
+    chat: `You are a helpful AI coding assistant. You help developers with:
 - Code explanations and debugging
 - Best practices and architecture advice  
 - Writing clean, efficient code
 - Troubleshooting errors
 - Code reviews and optimizations
 
-Always provide clear, practical answers. Use proper code formatting when showing examples.`;
+Always provide clear, practical answers. Use proper code formatting when showing examples.`,
+    
+    review: `You are a code review expert. Analyze the provided code and provide:
+- Detailed suggestions for improvement
+- Performance optimizations
+- Security considerations
+- Best practices recommendations
+- Potential bugs or issues
 
-  const fullMessages = [{ role: "system", content: systemPrompt }, ...messages];
+Be thorough and specific with your feedback.`,
+    
+    fix: `You are a debugging expert. Help fix issues in the code by:
+- Identifying bugs and errors
+- Explaining the root cause
+- Providing specific fixes with code examples
+- Suggesting preventive measures
+- Testing strategies
 
-  const prompt = fullMessages
+Focus on practical solutions.`,
+    
+    optimize: `You are a performance optimization expert. Analyze the code for:
+- Performance bottlenecks
+- Memory usage issues
+- Algorithmic improvements
+- Caching opportunities
+- Efficiency gains
+
+Provide actionable optimization suggestions.`
+  };
+
+  const systemPrompt = systemPrompts[mode] || systemPrompts.chat;
+  
+  const prompt = messages
     .map((msg) => `${msg.role}: ${msg.content}`)
     .join("\n\n");
 
   try {
-    const response = await fetch("http://localhost:11434/api/generate", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "codellama:latest",
-        prompt: prompt,
-        stream: false,
-        options: {
-          temperature: 0.7, // Controls randomness (0-1)
-          max_tokens: 1000, // Maximum response length
-          top_p: 0.9, // controls diversity
-        },
-      }),
-    });
-
-    const data = await response.json();
-
-    if (!data.response) {
-      throw new Error("No response from AI model");
-    }
-
-    return data.response.trim();
+    const llmProvider = new GeminiProvider();
+    const response = await llmProvider.generateResponse(prompt, systemPrompt);
+    return response;
   } catch (error) {
     console.error("AI generation error:", error);
-    throw new Error("Failed to generate AI response");
+    throw new Error(error instanceof Error ? error.message : "Failed to generate AI response");
   }
 }
 
 export async function POST(req: NextRequest) {
   try {
     const body: ChatRequest = await req.json();
-    const { message, history = [] } = body;
+    const { message, history = [], mode = "chat" } = body;
 
     // Validate input
     if (!message || typeof message !== "string") {
@@ -91,11 +99,8 @@ export async function POST(req: NextRequest) {
       { role: "user", content: message },
     ];
 
-    //   Generate ai response
-
-    const aiResponse = await generateAIResponse(messages);
-
-
+    // Generate AI response with mode
+    const aiResponse = await generateAIResponse(messages, mode);
 
     return NextResponse.json({
       response: aiResponse,
