@@ -4,10 +4,15 @@ import React, { useEffect, useState, useRef } from "react";
 import { transformToWebContainerFormat } from "../hooks/transformer";
 import { CheckCircle, Loader2, XCircle } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
-
+import dynamic from "next/dynamic";
 import { WebContainer } from "@webcontainer/api";
 import { TemplateFolder } from "@/modules/playground/lib/path-to-json";
-import TerminalComponent from "./terminal";
+const TerminalComponent = dynamic(
+  () => import("./terminal"),
+  {
+    ssr: false,
+  }
+);
 
 // Priority order for auto-detecting which script boots a dev/preview server.
 // "dev" is checked first because it's the conventional script for a live,
