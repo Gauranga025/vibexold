@@ -1,21 +1,14 @@
-export interface User {
-  id: string
-  name: string | null          // ✅ FIX
-  email: string
-  image: string | null         // ✅ FIX
-  role: string
-  createdAt: Date
-  updatedAt: Date
-}
+import { User, Playground, StarMark, Prisma } from "@prisma/client";
 
-export interface Project {
-  id: string
-  title: string
-  description: string | null   // ✅ already nullable in DB
-  template: string
-  createdAt: Date
-  updatedAt: Date
-  userId: string
-  user: User
-  Starmark: { isMarked: boolean }[]
-}
+export type ProjectUser = User;
+
+export type Project = Prisma.PlaygroundGetPayload<{
+  include: {
+    user: true;
+    Starmark: {
+      select: {
+        isMarked: true;
+      };
+    };
+  };
+}>;

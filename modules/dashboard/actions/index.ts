@@ -3,6 +3,7 @@
 import { db } from "@/lib/db";
 import { currentUser } from "@/modules/auth/actions";
 import { revalidatePath } from "next/cache";
+import { Project } from "../types";
 
 export const toggleStarMarked = async (
   playgroundId: string,
@@ -43,7 +44,7 @@ export const toggleStarMarked = async (
   }
 };
 
-export const getAllPlaygroundForUser = async () => {
+export const getAllPlaygroundForUser = async (): Promise<Project[]> => {
   const user = await currentUser();
 
   try {
@@ -64,9 +65,10 @@ export const getAllPlaygroundForUser = async () => {
       },
     });
 
-    return playground;
+    return playground as Project[];
   } catch (error) {
     console.log(error);
+    return [];
   }
 };
 
