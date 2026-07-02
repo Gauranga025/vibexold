@@ -9,7 +9,7 @@ export default async function DashboardLayout({
   children: React.ReactNode;
 }) {
 
-    const playgroundData = await getAllPlaygroundForUser();
+    const playgroundData: Project[] = await getAllPlaygroundForUser();
 
     console.log("playgroundData", playgroundData);
 
