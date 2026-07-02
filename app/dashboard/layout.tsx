@@ -21,7 +21,7 @@ export default async function DashboardLayout({
     HONO: "FlameIcon",
     ANGULAR: "Terminal",
   }
-
+type DebugType = typeof playgroundData;
   const formattedPlaygroundData = playgroundData?.map((item: Project)=>({
     id:item.id,
     name:item.title,
