@@ -1,9 +1,9 @@
 import { create } from "zustand";
 import { toast } from "sonner";
 
-import { TemplateFile, TemplateFolder } from "../lib/path-to-json";
+import { TemplateFile, TemplateFolder, TemplateItem } from "../lib/path-to-json";
 
-import { generateFileId } from "../lib";
+import { generateFileId, findNodeByPath, rebasePath } from "../lib";
 
 interface OpenFile extends TemplateFile {
   id: string;
@@ -74,6 +74,40 @@ interface FileExplorerState {
   updateFileContent: (fileId: string, content: string) => void;
 }
 
+/**
+ * Finds the folder node located at `parentPath` within `root`.
+ * `parentPath === ""` means the root folder itself.
+ *
+ * Throws instead of silently falling back to root: a failed lookup here
+ * means the tree is in an inconsistent state (e.g. a node missing its
+ * canonical `path`, or a stale/pre-migration tree) and inserting into
+ * root anyway would silently corrupt the file structure — exactly the
+ * "new folder ends up at root" symptom this is meant to catch.
+ */
+function resolveParentFolder(root: TemplateFolder, parentPath: string): TemplateFolder {
+  if (!parentPath) return root;
+
+  const node = findNodeByPath(root, parentPath);
+
+  if (!node) {
+    throw new Error(
+      `resolveParentFolder: no node found at path "${parentPath}". ` +
+      `This means some node in the current tree does not have the canonical ` +
+      `"path" this lookup expected (e.g. loaded from data saved before ` +
+      `canonical paths existed). Root items: [${root.items.map(i => `"${i.path}"`).join(", ")}]`
+    );
+  }
+
+  if (!("items" in node)) {
+    throw new Error(
+      `resolveParentFolder: node at path "${parentPath}" is a file ("${node.filename}.${node.fileExtension}"), not a folder. ` +
+      `Cannot insert into it.`
+    );
+  }
+
+  return node;
+}
+
 // @ts-ignore
 export const useFileExplorer = create<FileExplorerState>((set, get) => ({
   templateData: null,
@@ -91,7 +125,7 @@ export const useFileExplorer = create<FileExplorerState>((set, get) => ({
   setActiveFileId: (fileId) => set({ activeFileId: fileId }),
 
   openFile: (file) => {
-    const fileId = generateFileId(file, get().templateData!);
+    const fileId = generateFileId(file);
     const { openFiles } = get();
     const existingFile = openFiles.find((f) => f.id === fileId);
 
@@ -154,19 +188,25 @@ export const useFileExplorer = create<FileExplorerState>((set, get) => ({
         const { templateData } = get();
     if (!templateData) return;
 
+    console.log("[handleAddFile] parentPath =", JSON.stringify(parentPath));
+
     try {
       const updatedTemplateData = JSON.parse(JSON.stringify(templateData)) as TemplateFolder;
-      const pathParts = parentPath.split("/");
-      let currentFolder = updatedTemplateData;
+      const currentFolder = resolveParentFolder(updatedTemplateData, parentPath);
+      console.log(
+        "[handleAddFile] resolvedFolder.path =", JSON.stringify(currentFolder.path),
+        " resolvedFolder.folderName =", JSON.stringify(currentFolder.folderName)
+      );
 
-      for (const part of pathParts) {
-        if (part) {
-          const nextFolder = currentFolder.items.find(
-            (item) => "folderName" in item && item.folderName === part
-          ) as TemplateFolder;
-          if (nextFolder) currentFolder = nextFolder;
-        }
+      // The caller (file explorer UI) already knows parentPath, so it is
+      // expected to have set newFile.path correctly. Fall back to deriving
+      // it here defensively in case a caller forgets.
+      if (!newFile.path) {
+        newFile.path = parentPath
+          ? `${parentPath}/${newFile.filename}.${newFile.fileExtension}`
+          : `${newFile.filename}.${newFile.fileExtension}`;
       }
+      console.log("[handleAddFile] newFile.path =", JSON.stringify(newFile.path));
 
       currentFolder.items.push(newFile);
       set({ templateData: updatedTemplateData });
@@ -177,16 +217,13 @@ export const useFileExplorer = create<FileExplorerState>((set, get) => ({
 
       // Sync with web container
       if (writeFileSync) {
-        const filePath = parentPath
-          ? `${parentPath}/${newFile.filename}.${newFile.fileExtension}`
-          : `${newFile.filename}.${newFile.fileExtension}`;
-        await writeFileSync(filePath, newFile.content || "");
+        await writeFileSync(newFile.path, newFile.content || "");
       }
 
       get().openFile(newFile);
     } catch (error) {
       console.error("Error adding file:", error);
-      toast.error("Failed to create file");
+      toast.error(error instanceof Error ? error.message : "Failed to create file");
     }
   },
 
@@ -194,19 +231,23 @@ export const useFileExplorer = create<FileExplorerState>((set, get) => ({
     const { templateData } = get();
     if (!templateData) return;
 
+    console.log("[handleAddFolder] parentPath =", JSON.stringify(parentPath));
+    console.log("[handleAddFolder] newFolder.path (as received) =", JSON.stringify(newFolder.path));
+
     try {
       const updatedTemplateData = JSON.parse(JSON.stringify(templateData)) as TemplateFolder;
-      const pathParts = parentPath.split("/");
-      let currentFolder = updatedTemplateData;
+      const currentFolder = resolveParentFolder(updatedTemplateData, parentPath);
+      console.log(
+        "[handleAddFolder] resolvedFolder.path =", JSON.stringify(currentFolder.path),
+        " resolvedFolder.folderName =", JSON.stringify(currentFolder.folderName)
+      );
 
-      for (const part of pathParts) {
-        if (part) {
-          const nextFolder = currentFolder.items.find(
-            (item) => "folderName" in item && item.folderName === part
-          ) as TemplateFolder;
-          if (nextFolder) currentFolder = nextFolder;
-        }
+      if (!newFolder.path) {
+        newFolder.path = parentPath
+          ? `${parentPath}/${newFolder.folderName}`
+          : newFolder.folderName;
       }
+      console.log("[handleAddFolder] newFolder.path (final) =", JSON.stringify(newFolder.path));
 
       currentFolder.items.push(newFolder);
       set({ templateData: updatedTemplateData });
@@ -217,14 +258,11 @@ export const useFileExplorer = create<FileExplorerState>((set, get) => ({
 
       // Sync with web container
       if (instance && instance.fs) {
-        const folderPath = parentPath
-          ? `${parentPath}/${newFolder.folderName}`
-          : newFolder.folderName;
-        await instance.fs.mkdir(folderPath, { recursive: true });
+        await instance.fs.mkdir(newFolder.path, { recursive: true });
       }
     } catch (error) {
       console.error("Error adding folder:", error);
-      toast.error("Failed to create folder");
+      toast.error(error instanceof Error ? error.message : "Failed to create folder");
     }
   },
 
@@ -236,28 +274,15 @@ export const useFileExplorer = create<FileExplorerState>((set, get) => ({
       const updatedTemplateData = JSON.parse(
         JSON.stringify(templateData)
       ) as TemplateFolder;
-      const pathParts = parentPath.split("/");
-      let currentFolder = updatedTemplateData;
-
-      for (const part of pathParts) {
-        if (part) {
-          const nextFolder = currentFolder.items.find(
-            (item) => "folderName" in item && item.folderName === part
-          ) as TemplateFolder;
-          if (nextFolder) currentFolder = nextFolder;
-        }
-      }
+      const currentFolder = resolveParentFolder(updatedTemplateData, parentPath);
 
       currentFolder.items = currentFolder.items.filter(
-        (item) =>
-          !("filename" in item) ||
-          item.filename !== file.filename ||
-          item.fileExtension !== file.fileExtension
+        (item) => item.path !== file.path
       );
 
-      // Find and close the file if it's open
-      // Use the same ID generation logic as in openFile
-      const fileId = generateFileId(file, templateData);
+      // Find and close the file if it's open. The file's own canonical
+      // path IS its id, so there's nothing to recompute here.
+      const fileId = generateFileId(file);
       const openFile = openFiles.find((f) => f.id === fileId);
       
       if (openFile) {
@@ -284,38 +309,24 @@ export const useFileExplorer = create<FileExplorerState>((set, get) => ({
       const updatedTemplateData = JSON.parse(
         JSON.stringify(templateData)
       ) as TemplateFolder;
-      const pathParts = parentPath.split("/");
-      let currentFolder = updatedTemplateData;
-
-      for (const part of pathParts) {
-        if (part) {
-          const nextFolder = currentFolder.items.find(
-            (item) => "folderName" in item && item.folderName === part
-          ) as TemplateFolder;
-          if (nextFolder) currentFolder = nextFolder;
-        }
-      }
+      const currentFolder = resolveParentFolder(updatedTemplateData, parentPath);
 
       currentFolder.items = currentFolder.items.filter(
-        (item) =>
-          !("folderName" in item) || item.folderName !== folder.folderName
+        (item) => item.path !== folder.path
       );
 
-      // Close all files in the deleted folder recursively
-      const closeFilesInFolder = (folder: TemplateFolder, currentPath: string = "") => {
-        folder.items.forEach((item) => {
-          if ("filename" in item) {
-            // Generate the correct file ID using the same logic as openFile
-            const fileId = generateFileId(item, templateData);
-            get().closeFile(fileId);
-          } else if ("folderName" in item) {
-            const newPath = currentPath ? `${currentPath}/${item.folderName}` : item.folderName;
-            closeFilesInFolder(item, newPath);
-          }
-        });
+      // Close all files in the deleted folder recursively. Every item
+      // already carries its own canonical path, so nothing needs to be
+      // reconstructed here.
+      const closeFilesInFolder = (node: TemplateItem) => {
+        if ("items" in node) {
+          node.items.forEach(closeFilesInFolder);
+        } else {
+          get().closeFile(generateFileId(node));
+        }
       };
-      
-      closeFilesInFolder(folder, parentPath ? `${parentPath}/${folder.folderName}` : folder.folderName);
+
+      closeFilesInFolder(folder);
 
       set({ templateData: updatedTemplateData });
 
@@ -338,32 +349,18 @@ export const useFileExplorer = create<FileExplorerState>((set, get) => ({
     const { templateData, openFiles, activeFileId } = get();
     if (!templateData) return;
 
-    // Generate old and new file IDs using the same logic as openFile
-    const oldFileId = generateFileId(file, templateData);
-    const newFile = { ...file, filename: newFilename, fileExtension: newExtension };
-    const newFileId = generateFileId(newFile, templateData);
+    const oldFileId = generateFileId(file);
+    const newPath = parentPath ? `${parentPath}/${newFilename}.${newExtension}` : `${newFilename}.${newExtension}`;
+    const newFileId = newPath;
 
     try {
       const updatedTemplateData = JSON.parse(
         JSON.stringify(templateData)
       ) as TemplateFolder;
-      const pathParts = parentPath.split("/");
-      let currentFolder = updatedTemplateData;
-
-      for (const part of pathParts) {
-        if (part) {
-          const nextFolder = currentFolder.items.find(
-            (item) => "folderName" in item && item.folderName === part
-          ) as TemplateFolder;
-          if (nextFolder) currentFolder = nextFolder;
-        }
-      }
+      const currentFolder = resolveParentFolder(updatedTemplateData, parentPath);
 
       const fileIndex = currentFolder.items.findIndex(
-        (item) =>
-          "filename" in item &&
-          item.filename === file.filename &&
-          item.fileExtension === file.fileExtension
+        (item) => item.path === file.path
       );
 
       if (fileIndex !== -1) {
@@ -371,6 +368,7 @@ export const useFileExplorer = create<FileExplorerState>((set, get) => ({
           ...currentFolder.items[fileIndex],
           filename: newFilename,
           fileExtension: newExtension,
+          path: newPath,
         } as TemplateFile;
         currentFolder.items[fileIndex] = updatedFile;
 
@@ -382,6 +380,7 @@ export const useFileExplorer = create<FileExplorerState>((set, get) => ({
                 id: newFileId,
                 filename: newFilename,
                 fileExtension: newExtension,
+                path: newPath,
               }
             : f
         );
@@ -411,28 +410,25 @@ export const useFileExplorer = create<FileExplorerState>((set, get) => ({
       const updatedTemplateData = JSON.parse(
         JSON.stringify(templateData)
       ) as TemplateFolder;
-      const pathParts = parentPath.split("/");
-      let currentFolder = updatedTemplateData;
-
-      for (const part of pathParts) {
-        if (part) {
-          const nextFolder = currentFolder.items.find(
-            (item) => "folderName" in item && item.folderName === part
-          ) as TemplateFolder;
-          if (nextFolder) currentFolder = nextFolder;
-        }
-      }
+      const currentFolder = resolveParentFolder(updatedTemplateData, parentPath);
 
       const folderIndex = currentFolder.items.findIndex(
-        (item) => "folderName" in item && item.folderName === folder.folderName
+        (item) => item.path === folder.path
       );
 
       if (folderIndex !== -1) {
-        const updatedFolder = {
-          ...currentFolder.items[folderIndex],
-          folderName: newFolderName,
-        } as TemplateFolder;
-        currentFolder.items[folderIndex] = updatedFolder;
+        const newPath = parentPath ? `${parentPath}/${newFolderName}` : newFolderName;
+
+        // Renaming a folder changes the canonical path of every file and
+        // subfolder beneath it, not just the folder itself — rebasePath
+        // recursively rewrites the whole subtree so no descendant is left
+        // pointing at a path that no longer exists (which would silently
+        // break open tabs, save, and delete for every file inside it).
+        const renamedFolder = rebasePath(
+          { ...(currentFolder.items[folderIndex] as TemplateFolder), folderName: newFolderName },
+          newPath
+        );
+        currentFolder.items[folderIndex] = renamedFolder;
 
         set({ templateData: updatedTemplateData });
 

@@ -2,19 +2,33 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 /**
- * Represents a file in the template structure
+ * Represents a file in the template structure.
+ *
+ * `path` is the canonical, root-relative identifier for this file
+ * (e.g. "app/dashboard/page.tsx"). It is the single source of truth
+ * for "which file is this" everywhere in the app — filename/fileExtension
+ * are display metadata only and must never be used to identify a file,
+ * since multiple files can share the same filename+extension in different
+ * folders (e.g. "app/page.tsx" vs "app/dashboard/page.tsx").
  */
 export interface TemplateFile {
   filename: string;
   fileExtension: string;
   content: string;
+  /** Canonical, root-relative path. Stable identity for this file. */
+  path: string;
 }
 
 /**
- * Represents a folder in the template structure which can contain files and other folders
+ * Represents a folder in the template structure which can contain files and other folders.
+ *
+ * `path` is the canonical, root-relative identifier for this folder
+ * (e.g. "app/dashboard"). The root folder itself has path "".
  */
 export interface TemplateFolder {
   folderName: string;
+  /** Canonical, root-relative path. "" for the root folder. */
+  path: string;
   items: (TemplateFile | TemplateFolder)[];
 }
 
@@ -127,21 +141,28 @@ export async function scanTemplateDirectory(
   // Get the folder name from the path
   const folderName = path.basename(templatePath);
 
-  // Process the directory and return the result
-  return processDirectory(folderName, templatePath, mergedOptions);
+  // Process the directory and return the result.
+  // The root folder's canonical path is "" — every descendant path is
+  // relative to it, e.g. an "app/page.tsx" file lives at relativePath
+  // "app/page.tsx", not "<folderName>/app/page.tsx". This matches how
+  // the rest of the app addresses files (root folder name is never part
+  // of an id).
+  return processDirectory(folderName, templatePath, '', mergedOptions);
 }
 
 /**
  * Process a directory and its contents recursively
  * 
  * @param folderName - Name of the current folder
- * @param folderPath - Path to the current folder
+ * @param folderPath - Filesystem path to the current folder
+ * @param relativePath - Canonical, root-relative path of the current folder ("" for the root)
  * @param options - Scanning options
  * @returns Promise resolving to a TemplateFolder object
  */
 async function processDirectory(
   folderName: string, 
   folderPath: string, 
+  relativePath: string,
   options: ScanOptions
 ): Promise<TemplateFolder> {
   try {
@@ -153,6 +174,8 @@ async function processDirectory(
     for (const entry of entries) {
       const entryName = entry.name;
       const entryPath = path.join(folderPath, entryName);
+      // Canonical path of this entry, relative to the scan root.
+      const entryRelativePath = relativePath ? `${relativePath}/${entryName}` : entryName;
 
       // Check if this entry should be skipped
       if (entry.isDirectory()) {
@@ -163,7 +186,7 @@ async function processDirectory(
         }
         
         // If it's a directory, process it recursively
-        const subFolder = await processDirectory(entryName, entryPath, options);
+        const subFolder = await processDirectory(entryName, entryPath, entryRelativePath, options);
         items.push(subFolder);
       } else if (entry.isFile()) {
         // Skip ignored files
@@ -195,7 +218,8 @@ async function processDirectory(
           items.push({
             filename: parsedPath.name,
             fileExtension: parsedPath.ext.replace(/^\./, ''), // Remove leading dot
-            content
+            content,
+            path: entryRelativePath
           });
         } catch (error) {
           console.error(`Error reading file ${entryPath}:`, error);
@@ -204,7 +228,8 @@ async function processDirectory(
           items.push({
             filename: parsedPath.name,
             fileExtension: parsedPath.ext.replace(/^\./, ''),
-            content: `Error reading file: ${(error as Error).message}`
+            content: `Error reading file: ${(error as Error).message}`,
+            path: entryRelativePath
           });
         }
       }
@@ -214,6 +239,7 @@ async function processDirectory(
     // Return the folder with its items
     return {
       folderName,
+      path: relativePath,
       items
     };
   } catch (error) {

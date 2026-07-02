@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { toast } from "sonner";
 
 import type { TemplateFolder } from "../lib/path-to-json";
+import { upgradeTemplatePaths } from "../lib";
 import { getPlaygroundById, SaveUpdatedCode } from "../actions";
 
 interface PlaygroundData {
@@ -42,7 +43,12 @@ export const usePlayground = (id: string): UsePlaygroundReturn => {
 
       if (typeof rawContent === "string") {
         const parsedContent = JSON.parse(rawContent);
-        setTemplateData(parsedContent);
+        // parsedContent may predate the canonical-path refactor (it's
+        // whatever was last persisted via SaveUpdatedCode) — migrate it
+        // before it ever reaches state/Explorer. No-op if every node
+        // already has a path.
+        const migratedContent = upgradeTemplatePaths(parsedContent);
+        setTemplateData(migratedContent);
         toast.success("playground loaded successfully");
         return;
       }
@@ -58,12 +64,14 @@ export const usePlayground = (id: string): UsePlaygroundReturn => {
       if (templateRes.templateJson && Array.isArray(templateRes.templateJson)) {
         setTemplateData({
           folderName: "Root",
+          path: "",
           items: templateRes.templateJson,
         });
       } else {
         setTemplateData(
           templateRes.templateJson || {
             folderName: "Root",
+            path: "",
             items: [],
           }
         );

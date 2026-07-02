@@ -28,7 +28,6 @@ import ToggleAI from "@/modules/playground/components/toggle-ai";
 import { useAISuggestions } from "@/modules/playground/hooks/useAISuggestion";
 import { useFileExplorer } from "@/modules/playground/hooks/useFileExplorer";
 import { usePlayground } from "@/modules/playground/hooks/usePlayground";
-import { findFilePath } from "@/modules/playground/lib";
 import {
   TemplateFile,
   TemplateFolder,
@@ -189,10 +188,16 @@ const MainPlaygroundPage = () => {
       if (!latestTemplateData) return
 
       try {
-            const filePath = findFilePath(fileToSave, latestTemplateData);
+        // fileToSave.path IS the file's canonical identity — it was set
+        // once at scan time and carried through open/edit unchanged, so
+        // there's nothing to search for here. (Previously this called
+        // findFilePath(), which searched the tree by filename+extension
+        // and could resolve to a different file entirely when two files
+        // shared a name, silently overwriting the wrong one on save.)
+        const filePath = fileToSave.path;
         if (!filePath) {
           toast.error(
-            `Could not find path for file: ${fileToSave.filename}.${fileToSave.fileExtension}`
+            `File has no canonical path: ${fileToSave.filename}.${fileToSave.fileExtension}`
           );
           return;
         }
@@ -207,10 +212,7 @@ const MainPlaygroundPage = () => {
           items.map((item) => {
             if ("folderName" in item) {
               return { ...item, items: updateFileContent(item.items) };
-            } else if (
-              item.filename === fileToSave.filename &&
-              item.fileExtension === fileToSave.fileExtension
-            ) {
+            } else if (item.path === fileToSave.path) {
               return { ...item, content: fileToSave.content };
             }
             return item;
@@ -500,6 +502,7 @@ const MainPlaygroundPage = () => {
                       <PlaygroundEditor
                         activeFile={activeFile}
                         content={activeFile?.content || ""}
+                        openFilePaths={openFiles.map((f) => f.path)}
                         onContentChange={(value) => {
                         if (!activeFileId) return;
                         updateFileContent(activeFileId, value);

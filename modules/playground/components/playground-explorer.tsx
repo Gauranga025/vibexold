@@ -51,11 +51,15 @@ interface TemplateFile {
   filename: string;
   fileExtension: string;
   content: string;
+  /** Canonical, root-relative path — the file's real identity. */
+  path: string;
 }
 
 
 interface TemplateFolder {
   folderName: string;
+  /** Canonical, root-relative path ("" for the root folder). */
+  path: string;
   items: (TemplateFile | TemplateFolder)[];
 }
 
@@ -114,6 +118,7 @@ export function TemplateFileTree({
         filename,
         fileExtension: extension,
         content: "",
+        path: `${filename}.${extension}`,
       };
       onAddFile(newFile, "");
     }
@@ -124,6 +129,7 @@ export function TemplateFileTree({
     if (onAddFolder && isRootFolder) {
       const newFolder: TemplateFolder = {
         folderName,
+        path: folderName,
         items: [],
       };
       onAddFolder(newFolder, "");
@@ -259,10 +265,10 @@ function TemplateNode({
     const file = item as TemplateFile;
     const fileName = `${file.filename}.${file.fileExtension}`;
 
-    const isSelected =
-      selectedFile &&
-      selectedFile.filename === file.filename &&
-      selectedFile.fileExtension === file.fileExtension;
+    // Compare by canonical path, not filename+extension: two files in
+    // different folders can share the same name (e.g. "page.tsx"), and
+    // comparing by name alone would highlight/select both of them together.
+    const isSelected = selectedFile && selectedFile.path === file.path;
 
     const handleRename = () => {
       setIsRenameDialogOpen(true);
@@ -373,6 +379,7 @@ function TemplateNode({
           filename,
           fileExtension: extension,
           content: "",
+          path: currentPath ? `${currentPath}/${filename}.${extension}` : `${filename}.${extension}`,
         };
         onAddFile(newFile, currentPath);
       }
@@ -383,6 +390,7 @@ function TemplateNode({
       if (onAddFolder) {
         const newFolder: TemplateFolder = {
           folderName,
+          path: currentPath ? `${currentPath}/${folderName}` : folderName,
           items: [],
         };
         onAddFolder(newFolder, currentPath);

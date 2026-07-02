@@ -10,6 +10,10 @@ interface PlaygroundEditorProps {
   activeFile: TemplateFile | undefined
   content: string
   onContentChange: (value: string) => void
+  // Canonical paths of every currently-open tab. Used only to know which
+  // cached Monaco models are stale and safe to dispose (e.g. after a tab
+  // is closed) — never to identify "the" file, that's activeFile.path.
+  openFilePaths?: string[]
   suggestion: string | null
   suggestionLoading: boolean
   suggestionPosition: { line: number; column: number } | null
@@ -22,6 +26,7 @@ export const PlaygroundEditor = ({
   activeFile,
   content,
   onContentChange,
+  openFilePaths,
   suggestion,
   suggestionLoading,
   suggestionPosition,
@@ -47,6 +52,63 @@ export const PlaygroundEditor = ({
   // otherwise every additional mount of the editor stacks a duplicate listener.
   const cursorPositionListenerRef = useRef<{ dispose: () => void } | null>(null)
   const modelContentListenerRef = useRef<{ dispose: () => void } | null>(null)
+
+  // One Monaco text model per canonical file path (never per filename —
+  // "app/page.tsx" and "app/dashboard/page.tsx" each get their own model
+  // even though they'd share a filename). Keeping a real model per file,
+  // instead of one shared editor whose `value` is swapped, means each
+  // file keeps its own undo/redo history, cursor position, and scroll
+  // offset when you switch tabs and back.
+  const modelsRef = useRef<Map<string, any>>(new Map())
+  // Kept up to date via a plain assignment (not state) so the content-change
+  // listener attached once per model always calls the latest onContentChange
+  // without needing to be re-attached every render.
+  const onContentChangeRef = useRef(onContentChange)
+  useEffect(() => {
+    onContentChangeRef.current = onContentChange
+  }, [onContentChange])
+
+  const modelUri = useCallback((monaco: Monaco, filePath: string) => monaco.Uri.parse(`file:///${filePath}`), [])
+
+  // Returns the cached model for this path, creating it (seeded with
+  // `initialContent`) if it doesn't exist yet. Never creates a second
+  // model for the same path.
+  const getOrCreateModel = useCallback(
+    (monaco: Monaco, filePath: string, initialContent: string, language: string) => {
+      const cached = modelsRef.current.get(filePath)
+      if (cached && !cached.isDisposed()) return cached
+
+      const uri = modelUri(monaco, filePath)
+      const existing = monaco.editor.getModel(uri)
+      const model = existing ?? monaco.editor.createModel(initialContent, language, uri)
+
+      if (!existing) {
+        model.onDidChangeContent(() => {
+          onContentChangeRef.current(model.getValue())
+        })
+      }
+
+      modelsRef.current.set(filePath, model)
+      return model
+    },
+    [modelUri]
+  )
+
+  // Point the editor at the model for `activeFile`, creating it on first
+  // visit. Safe to call multiple times — it's a no-op if the editor is
+  // already showing that model.
+  const syncActiveModel = useCallback(() => {
+    const editor = editorRef.current
+    const monaco = monacoRef.current
+    if (!editor || !monaco || !activeFile) return
+
+    const language = getEditorLanguage(activeFile.fileExtension || "")
+    const model = getOrCreateModel(monaco, activeFile.path, activeFile.content ?? content, language)
+
+    if (editor.getModel() !== model) {
+      editor.setModel(model)
+    }
+  }, [activeFile, content, getOrCreateModel])
 
   // Generate unique ID for each suggestion
   const generateSuggestionId = () => `suggestion-${Date.now()}-${Math.random()}`
@@ -318,6 +380,16 @@ export const PlaygroundEditor = ({
     monacoRef.current = monaco
     console.log("Editor instance mounted:", !!editorRef.current)
 
+    // @monaco-editor/react auto-creates a placeholder model (an
+    // "inmemory://" URI, not one of ours) before onMount fires. Swap it
+    // for the real per-path model, then dispose the placeholder so it
+    // doesn't leak.
+    const placeholderModel = editor.getModel()
+    syncActiveModel()
+    if (placeholderModel && placeholderModel !== editor.getModel() && !placeholderModel.isDisposed()) {
+      placeholderModel.dispose()
+    }
+
     editor.updateOptions({
       ...defaultEditorOptions,
       // Enable inline suggestions but with specific settings to prevent conflicts
@@ -516,9 +588,27 @@ export const PlaygroundEditor = ({
     }
   }
 
+  // Switch the editor to the active file's own model whenever which file
+  // is active changes. Keyed on activeFile.path specifically (not the
+  // whole object) so this doesn't re-fire on every keystroke — content
+  // changes flow through the model itself, not through this effect.
   useEffect(() => {
+    syncActiveModel()
     updateEditorLanguage()
-  }, [activeFile])
+  }, [activeFile?.path])
+
+  // Dispose models for tabs that are no longer open. Without this,
+  // closing a tab would leak its Monaco model forever.
+  useEffect(() => {
+    if (!openFilePaths) return
+    const openSet = new Set(openFilePaths)
+    for (const [path, model] of modelsRef.current.entries()) {
+      if (!openSet.has(path)) {
+        if (!model.isDisposed()) model.dispose()
+        modelsRef.current.delete(path)
+      }
+    }
+  }, [openFilePaths])
 
   // Cleanup on unmount
   useEffect(() => {
@@ -544,6 +634,12 @@ export const PlaygroundEditor = ({
         modelContentListenerRef.current.dispose()
         modelContentListenerRef.current = null
       }
+      // Dispose every cached model — the editor instance itself is being
+      // torn down, so nothing will reference these afterwards.
+      for (const model of modelsRef.current.values()) {
+        if (!model.isDisposed()) model.dispose()
+      }
+      modelsRef.current.clear()
     }
   }, [])
 
@@ -567,8 +663,14 @@ export const PlaygroundEditor = ({
 
       <Editor
         height="100%"
-        value={content}
-        onChange={(value) => onContentChange(value || "")}
+        // No `value`/`onChange`: content is owned by the per-path Monaco
+        // model (see modelsRef/getOrCreateModel above), not by React state
+        // pushed down into the editor. This is what gives each file its
+        // own undo history and cursor/scroll position across tab switches.
+        // `defaultValue`/`language` only matter for the transient
+        // placeholder model that exists for the instant before onMount
+        // swaps in the real one.
+        defaultValue={content}
         onMount={handleEditorDidMount}
         language={activeFile ? getEditorLanguage(activeFile.fileExtension || "") : "plaintext"}
         // @ts-ignore
