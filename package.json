@@ -3,12 +3,21 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+<<<<<<< HEAD
     "dev": "next dev --turbopack",
      "build": "prisma generate && next build",
     "start": "next start",
     "lint": "next lint",
     "postinstall": "prisma generate"
   },
+=======
+  "dev": "next dev --turbopack",
+  "build": "prisma generate && next build",
+  "start": "next start",
+  "lint": "next lint",
+  "postinstall": "prisma generate"
+},
+>>>>>>> f623501abe284d998e44764b72d2a3f7be6c86cb
   "dependencies": {
     "@auth/prisma-adapter": "^2.10.0",
     "@google/genai": "^2.10.0",

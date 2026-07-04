@@ -27,9 +27,10 @@ model User {
   accounts Account[]
   role     UserRole  @default(USER)
 
-  myPlaground Playground[]
+  myPlaground     Playground[]
   staredPlayground StarMark[]
-  chatMessages ChatMessage[]
+  chatMessages    ChatMessage[]
+  sessions        Session[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -63,58 +64,57 @@ enum Templates {
   HONO
   ANGULAR
 }
+
 model Playground {
-  id  String @id @default(cuid()) @map("_id")
-  title  String
+  id          String    @id @default(cuid()) @map("_id")
+  title       String
   description String?
-  template   Templates  @default(REACT)
-  createdAt  DateTime  @default(now())
-  updatedAt  DateTime @updatedAt
- 
- Starmark   StarMark[]
-  userId  String
-  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  template    Templates @default(REACT)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  Starmark StarMark[]
+  userId   String
+  user     User       @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   templateFiles TemplateFile[]
 }
 
-
 model StarMark {
-  id  String @id @default(cuid()) @map("_id")
-  userId String
+  id           String   @id @default(cuid()) @map("_id")
+  userId       String
   playgroundId String
-  isMarked  Boolean
-  createdAt  DateTime  @default(now())
+  isMarked     Boolean
+  createdAt    DateTime @default(now())
   user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
   playground   Playground @relation(fields: [playgroundId], references: [id], onDelete: Cascade)
 
-  @@unique([userId , playgroundId])
+  @@unique([userId, playgroundId])
 }
 
 model TemplateFile {
-  id  String @id @default(cuid()) @map("_id")
-  content Json
-  createdAt  DateTime  @default(now())
-  updatedAt  DateTime @updatedAt
-  playgroundId String @unique
+  id           String   @id @default(cuid()) @map("_id")
+  content      Json
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  playgroundId String   @unique
   playground   Playground @relation(fields: [playgroundId], references: [id], onDelete: Cascade)
 }
 
-
 model ChatMessage {
-  id  String @id @default(cuid()) @map("_id")
-  userId String 
-  role   String  // "user" or "assitant"
-  content String
-  createdAt DateTime  @default(now())
+  id        String   @id @default(cuid()) @map("_id")
+  userId    String
+  role      String // "user" or "assistant"
+  content   String
+  createdAt DateTime @default(now())
 
-  user  User @relation(fields: [userId] , references: [id] , onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
-} 
+}
 
 model Session {
-  id           String   @id @default(cuid())
+  id           String   @id @default(cuid()) @map("_id")
   sessionToken String   @unique
   userId       String
   expires      DateTime
