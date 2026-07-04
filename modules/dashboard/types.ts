@@ -1,6 +1,4 @@
-import { User, Playground, StarMark, Prisma } from "@prisma/client";
-
-export type ProjectUser = User;
+import { Prisma } from "@prisma/client";
 
 export type Project = Prisma.PlaygroundGetPayload<{
   include: {
@@ -12,3 +10,5 @@ export type Project = Prisma.PlaygroundGetPayload<{
     };
   };
 }>;
+
+export type ProjectUser = Project["user"];
