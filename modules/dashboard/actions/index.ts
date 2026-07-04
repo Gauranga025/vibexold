@@ -93,7 +93,8 @@ export const createPlayground = async (data: {
 
     return playground;
   } catch (error) {
-    console.log(error);
+    console.error("Failed to create playground:", error);
+    return null;
   }
 };
 

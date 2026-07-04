@@ -43,7 +43,7 @@ import {
   Settings,
   X,
 } from "lucide-react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import React, {
   useCallback,
   useEffect,
@@ -55,7 +55,18 @@ import { toast } from "sonner";
 
 const MainPlaygroundPage = () => {
   const { id } = useParams<{ id: string }>();
+  const router = useRouter();
   const [isPreviewVisible, setIsPreviewVisible] = useState(true);
+
+  // Defense-in-depth: if something upstream ever navigates here with a
+  // missing or literal "undefined"/"null" id (e.g. a failed create call),
+  // bail out to the dashboard instead of firing off doomed API requests.
+  useEffect(() => {
+    if (!id || id === "undefined" || id === "null") {
+      toast.error("Invalid playground link. Redirecting to dashboard.");
+      router.replace("/dashboard");
+    }
+  }, [id, router]);
 
   const { playgroundData, templateData, isLoading, error, saveTemplateData } =
     usePlayground(id);

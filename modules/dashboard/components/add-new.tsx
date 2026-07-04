@@ -1,4 +1,3 @@
-
 "use client";
 
 import { Button } from "@/components/ui/button"
@@ -29,11 +28,15 @@ const AddNewButton = () => {
     setSelectedTemplate(data)
 
     const res = await createPlayground(data);
-    toast.success("Playground Created successfully"
-      
-    )
     setIsModalOpen(false)
-    router.push(`/playground/${res?.id}`)
+
+    if (!res?.id) {
+      toast.error("Failed to create playground. Please try again.")
+      return
+    }
+
+    toast.success("Playground Created successfully")
+    router.push(`/playground/${res.id}`)
   }
 
 

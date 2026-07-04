@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { WebContainer } from "@webcontainer/api";
 import { TemplateFolder } from "@/modules/playground/lib/path-to-json";
 
@@ -22,6 +22,7 @@ export const useWebContainer = ({
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [instance, setInstance] = useState<WebContainer | null>(null);
+  const instanceRef = useRef<WebContainer | null>(null);
 
   useEffect(() => {
     let mounted = true;
@@ -30,8 +31,14 @@ export const useWebContainer = ({
       try {
         const webcontainerInstance = await WebContainer.boot();
 
-        if (!mounted) return;
+        if (!mounted) {
+          // Unmounted while boot() was in flight - tear down immediately
+          // so we don't leak the only instance this tab is allowed to have.
+          webcontainerInstance.teardown();
+          return;
+        }
 
+        instanceRef.current = webcontainerInstance;
         setInstance(webcontainerInstance);
         setIsLoading(false);
       } catch (error) {
@@ -51,8 +58,11 @@ export const useWebContainer = ({
 
     return () => {
       mounted = false;
-      if (instance) {
-        instance.teardown();
+      // Use the ref, not `instance` state, so this always sees the real
+      // instance even though this cleanup closure was created on first render.
+      if (instanceRef.current) {
+        instanceRef.current.teardown();
+        instanceRef.current = null;
       }
     };
   }, []);
