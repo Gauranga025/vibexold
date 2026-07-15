@@ -2,18 +2,23 @@ import { NextRequest, NextResponse } from 'next/server';
 import { scanRepository } from '@/lib/ai/scanner';
 import { chunkFiles } from '@/lib/ai/chunker';
 import { RepositoryIndex } from '@/lib/ai/index/repository-index';
-
-let repositoryIndex: RepositoryIndex | null = null;
-let lastScanTime: Date | null = null;
+import { sessionIndexes, SESSION_TIMEOUT_MS } from '@/lib/ai/session-store';
 
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { rootPath } = body;
+    const { rootPath, sessionId } = body;
 
     if (!rootPath) {
       return NextResponse.json(
         { error: 'rootPath is required' },
+        { status: 400 }
+      );
+    }
+
+    if (!sessionId) {
+      return NextResponse.json(
+        { error: 'sessionId is required' },
         { status: 400 }
       );
     }
@@ -28,14 +33,17 @@ export async function POST(req: NextRequest) {
 
     const chunkMap = await chunkFiles(scanResult.files);
 
-    repositoryIndex = new RepositoryIndex();
-    
+    const repositoryIndex = new RepositoryIndex();
+
     for (const file of scanResult.files) {
       const chunks = chunkMap.get(file.path) || [];
       repositoryIndex.addFile(file, chunks);
     }
 
-    lastScanTime = new Date();
+    const lastScanTime = new Date();
+
+    // Store in session map
+    sessionIndexes.set(sessionId, { repositoryIndex, lastScanTime });
 
     const stats = repositoryIndex.getStats();
 
@@ -65,18 +73,30 @@ export async function POST(req: NextRequest) {
 }
 
 export async function GET(req: NextRequest) {
-  if (!repositoryIndex) {
+  const { searchParams } = new URL(req.url);
+  const sessionId = searchParams.get('sessionId');
+
+  if (!sessionId) {
     return NextResponse.json(
-      { error: 'No repository scanned yet' },
+      { error: 'sessionId is required' },
+      { status: 400 }
+    );
+  }
+
+  const session = sessionIndexes.get(sessionId);
+
+  if (!session) {
+    return NextResponse.json(
+      { error: 'No repository scanned yet for this session' },
       { status: 404 }
     );
   }
 
-  const stats = repositoryIndex.getStats();
+  const stats = session.repositoryIndex.getStats();
 
   return NextResponse.json({
     scanned: true,
-    scannedAt: lastScanTime?.toISOString(),
+    scannedAt: session.lastScanTime.toISOString(),
     stats,
   });
 }

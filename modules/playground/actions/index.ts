@@ -9,10 +9,16 @@ import { currentUser } from "@/modules/auth/actions";
 
 
 export const getPlaygroundById = async(id:string)=>{
+    const user = await currentUser();
+    if (!user || !user.id) {
+        return null;
+    }
+
     try {
         const playground = await db.playground.findUnique({
             where:{id},
             select:{
+                userId:true,
                 title:true,
                 templateFiles:{
                     select:{
@@ -21,17 +27,34 @@ export const getPlaygroundById = async(id:string)=>{
                 }
             }
         })
+
+        // Verify ownership
+        if (!playground || playground.userId !== user.id) {
+            return null;
+        }
+
         return playground;
     } catch (error) {
         console.log(error)
+        return null;
     }
 }
 
 export const SaveUpdatedCode = async(playgroundId:string , data:TemplateFolder)=>{
     const user = await currentUser();
-  if (!user) return null;
+    if (!user || !user.id) return null;
 
-  try {
+    try {
+        // Verify ownership before updating
+        const playground = await db.playground.findUnique({
+            where: { id: playgroundId },
+            select: { userId: true }
+        });
+
+        if (!playground || playground.userId !== user.id) {
+            return null;
+        }
+
     const updatedPlayground = await db.templateFile.upsert({
         where:{
             playgroundId

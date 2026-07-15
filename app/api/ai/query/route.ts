@@ -4,13 +4,12 @@ import { classifyIntent } from '@/lib/ai/intent';
 import { retrieveChunks } from '@/lib/ai/retriever';
 import { buildContext } from '@/lib/ai/context';
 import { GeminiProvider } from '@/lib/ai/providers';
-
-let repositoryIndex: RepositoryIndex | null = null;
+import { sessionIndexes } from '@/lib/ai/session-store';
 
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { query, currentFile, currentSelection, conversationHistory } = body;
+    const { query, currentFile, currentSelection, conversationHistory, sessionId } = body;
 
     if (!query) {
       return NextResponse.json(
@@ -19,12 +18,23 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    if (!repositoryIndex) {
+    if (!sessionId) {
       return NextResponse.json(
-        { error: 'Repository not scanned. Please scan the repository first.' },
+        { error: 'sessionId is required' },
         { status: 400 }
       );
     }
+
+    const session = sessionIndexes.get(sessionId);
+
+    if (!session) {
+      return NextResponse.json(
+        { error: 'Repository not scanned for this session. Please scan the repository first.' },
+        { status: 400 }
+      );
+    }
+
+    const repositoryIndex = session.repositoryIndex;
 
     const intent = classifyIntent(query);
 
@@ -44,7 +54,7 @@ export async function POST(req: NextRequest) {
         { query, intent, currentFile, maxResults: 15 },
         repositoryIndex
       );
-      
+
       if (fallbackResult.chunks.length > 0) {
         Object.assign(retrievalResult, fallbackResult);
       }

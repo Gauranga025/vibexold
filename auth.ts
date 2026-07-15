@@ -29,20 +29,19 @@ export const { auth, handlers, signIn, signOut } = NextAuth({
             email: user.email!,
             name: user.name,
             image: user.image,
-           
+
             accounts: {
-              // @ts-ignore
               create: {
                 type: account.type,
                 provider: account.provider,
                 providerAccountId: account.providerAccountId,
-                refreshToken: account.refresh_token,
-                accessToken: account.access_token,
-                expiresAt: account.expires_at,
-                tokenType: account.token_type,
-                scope: account.scope,
-                idToken: account.id_token,
-                sessionState: account.session_state,
+                refreshToken: account.refresh_token || null,
+                accessToken: account.access_token || null,
+                expiresAt: account.expires_at || null,
+                tokenType: account.token_type || null,
+                scope: account.scope || null,
+                idToken: account.id_token || null,
+                sessionState: typeof account.session_state === 'string' ? account.session_state : null,
               },
             },
           },
@@ -68,14 +67,13 @@ export const { auth, handlers, signIn, signOut } = NextAuth({
               type: account.type,
               provider: account.provider,
               providerAccountId: account.providerAccountId,
-              refreshToken: account.refresh_token,
-              accessToken: account.access_token,
-              expiresAt: account.expires_at,
-              tokenType: account.token_type,
-              scope: account.scope,
-              idToken: account.id_token,
-              // @ts-ignore
-              sessionState: account.session_state,
+              refreshToken: account.refresh_token || null,
+              accessToken: account.access_token || null,
+              expiresAt: account.expires_at || null,
+              tokenType: account.token_type || null,
+              scope: account.scope || null,
+              idToken: account.id_token || null,
+              sessionState: typeof account.session_state === 'string' ? account.session_state : null,
             },
           });
         }

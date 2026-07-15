@@ -9,6 +9,8 @@ import { templatePaths } from "@/lib/template";
 import path from "path";
 import fs from "fs/promises";
 import { NextRequest } from "next/server";
+import { randomUUID } from "crypto";
+import os from "os";
 
 function validateJsonStructure(data: unknown): boolean {
   try {
@@ -46,9 +48,10 @@ const playground = await db.playground.findUnique({
     return Response.json({ error: "Invalid template" }, { status: 404 });
   }
 
+  const outputFile = path.join(os.tmpdir(), `${templateKey}-${randomUUID()}.json`);
+
   try {
     const inputPath = path.join(process.cwd() , templatePath);
-    const outputFile = path.join(process.cwd() , `output/${templateKey}.json`);
 
     await saveTemplateStructureToJson(inputPath , outputFile);
     const result = await readTemplateStructureFromJson(outputFile);
@@ -66,6 +69,13 @@ const playground = await db.playground.findUnique({
   } catch (error) {
       console.error("Error generating template JSON:", error);
     return Response.json({ error: "Failed to generate template" }, { status: 500 });
+  } finally {
+    // Ensure temp file cleanup even if error occurs
+    try {
+      await fs.unlink(outputFile);
+    } catch (error) {
+      // Ignore cleanup errors
+    }
   }
 
 

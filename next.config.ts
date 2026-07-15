@@ -12,7 +12,19 @@ const nextConfig: NextConfig = {
     remotePatterns:[
       {
         protocol:"https",
-        hostname:"*",
+        hostname:"lh3.googleusercontent.com",
+        port:'',
+        pathname:"/**"
+      },
+      {
+        protocol:"https",
+        hostname:"avatars.githubusercontent.com",
+        port:'',
+        pathname:"/**"
+      },
+      {
+        protocol:"https",
+        hostname:"github.com",
         port:'',
         pathname:"/**"
       }
@@ -21,8 +33,8 @@ const nextConfig: NextConfig = {
   async headers() {
     return [
       {
-        // Apply to all routes
-        source: '/:path*',
+        // Apply COOP/COEP headers only to playground routes for WebContainers
+        source: '/playground/:path*',
         headers: [
           {
             key: 'Cross-Origin-Opener-Policy',
